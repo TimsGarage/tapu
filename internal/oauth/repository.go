@@ -8,9 +8,25 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/timsgarage/tapu/internal/admin"
+	"github.com/timsgarage/tapu/internal/identity"
 )
+
+type ConsumeAuthorizationCodeInput struct {
+	RawCode       string
+	OAuthClientID uuid.UUID
+	RedirectURI   string
+	PKCEVerifier  string
+}
+
+type ConsumedAuthorizationCode struct {
+	Code    AuthorizationCode
+	User    identity.User
+	Client  admin.OAuthClient
+	Service admin.Service
+}
 
 var (
 	ErrClientNotFound      = errors.New("OAuth client not found")
@@ -18,6 +34,7 @@ var (
 	ErrRedirectURINotFound = errors.New("redirect URI not found")
 	ErrClientAccessDenied  = errors.New("client access denied")
 	ErrUserAccessDenied    = errors.New("user access denied")
+	ErrInvalidGrant        = errors.New("invalid authorization grant")
 )
 
 type Repository struct {
@@ -193,4 +210,216 @@ func (r *Repository) DeleteExpiredAuthorizationCodes(
 	}
 
 	return nil
+}
+
+func (r *Repository) ConsumeAuthorizationCode(
+	ctx context.Context,
+	input ConsumeAuthorizationCodeInput,
+) (*ConsumedAuthorizationCode, error) {
+	if !ValidAuthorizationCode(input.RawCode) ||
+		!ValidPKCEVerifier(input.PKCEVerifier) {
+		return nil, ErrInvalidGrant
+	}
+
+	codeHash := HashAuthorizationCode(input.RawCode)
+	now := time.Now().UTC()
+
+	var consumed ConsumedAuthorizationCode
+
+	err := r.database.WithContext(ctx).Transaction(
+		func(transaction *gorm.DB) error {
+			var code AuthorizationCode
+
+			err := transaction.
+				Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where(
+					"code_hash = ? AND used_at IS NULL AND expires_at > ?",
+					codeHash,
+					now,
+				).
+				First(&code).
+				Error
+
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidGrant
+			}
+
+			if err != nil {
+				return fmt.Errorf(
+					"lock authorization code: %w",
+					err,
+				)
+			}
+
+			if code.OAuthClientID != input.OAuthClientID ||
+				code.RedirectURI != input.RedirectURI ||
+				!VerifyPKCE(
+					input.PKCEVerifier,
+					code.PKCEChallenge,
+				) {
+				return ErrInvalidGrant
+			}
+
+			var user identity.User
+			if err := transaction.
+				Where(
+					"id = ? AND status = ?",
+					code.UserID,
+					identity.StatusActive,
+				).
+				First(&user).
+				Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrInvalidGrant
+				}
+
+				return fmt.Errorf(
+					"find authorization user: %w",
+					err,
+				)
+			}
+
+			var client admin.OAuthClient
+			if err := transaction.
+				Where(
+					"id = ? AND enabled = TRUE",
+					code.OAuthClientID,
+				).
+				First(&client).
+				Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrInvalidGrant
+				}
+
+				return fmt.Errorf(
+					"find authorization client: %w",
+					err,
+				)
+			}
+
+			var service admin.Service
+			if err := transaction.
+				Where(
+					"id = ? AND enabled = TRUE",
+					code.ServiceID,
+				).
+				First(&service).
+				Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrInvalidGrant
+				}
+
+				return fmt.Errorf(
+					"find authorization service: %w",
+					err,
+				)
+			}
+
+			var clientAccessCount int64
+			if err := transaction.
+				Model(&admin.OAuthClientService{}).
+				Where(
+					"oauth_client_id = ? AND service_id = ?",
+					client.ID,
+					service.ID,
+				).
+				Count(&clientAccessCount).
+				Error; err != nil {
+				return fmt.Errorf(
+					"check client access: %w",
+					err,
+				)
+			}
+
+			if clientAccessCount != 1 {
+				return ErrInvalidGrant
+			}
+
+			var userAccessCount int64
+			if err := transaction.
+				Model(&admin.UserServiceAccess{}).
+				Where(
+					"user_id = ? AND service_id = ?",
+					user.ID,
+					service.ID,
+				).
+				Count(&userAccessCount).
+				Error; err != nil {
+				return fmt.Errorf(
+					"check user access: %w",
+					err,
+				)
+			}
+
+			if userAccessCount != 1 {
+				return ErrInvalidGrant
+			}
+
+			result := transaction.
+				Model(&AuthorizationCode{}).
+				Where(
+					"id = ? AND used_at IS NULL",
+					code.ID,
+				).
+				Update("used_at", now)
+
+			if result.Error != nil {
+				return fmt.Errorf(
+					"consume authorization code: %w",
+					result.Error,
+				)
+			}
+
+			if result.RowsAffected != 1 {
+				return ErrInvalidGrant
+			}
+
+			code.UsedAt = &now
+
+			consumed = ConsumedAuthorizationCode{
+				Code:    code,
+				User:    user,
+				Client:  client,
+				Service: service,
+			}
+
+			return nil
+		},
+	)
+
+	if errors.Is(err, ErrInvalidGrant) {
+		return nil, ErrInvalidGrant
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &consumed, nil
+}
+
+func (r *Repository) FindActiveUserByID(
+	ctx context.Context,
+	userID uuid.UUID,
+) (*identity.User, error) {
+	var user identity.User
+
+	err := r.database.WithContext(ctx).
+		Where(
+			"id = ? AND status = ?",
+			userID,
+			identity.StatusActive,
+		).
+		First(&user).
+		Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, identity.ErrUserNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("find active user: %w", err)
+	}
+
+	return &user, nil
 }

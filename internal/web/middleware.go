@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/timsgarage/tapu/internal/session"
@@ -38,12 +39,7 @@ func (h *Handler) RequireAuthentication(
 	) {
 		cookie, err := request.Cookie(h.sessionCookieName)
 		if err != nil {
-			http.Redirect(
-				writer,
-				request,
-				"/login",
-				http.StatusSeeOther,
-			)
+			redirectToLogin(writer, request)
 			return
 		}
 
@@ -54,12 +50,7 @@ func (h *Handler) RequireAuthentication(
 		if errors.Is(err, session.ErrUnauthenticated) {
 			h.clearSessionCookies(writer)
 
-			http.Redirect(
-				writer,
-				request,
-				"/login",
-				http.StatusSeeOther,
-			)
+			redirectToLogin(writer, request)
 			return
 		}
 
@@ -150,4 +141,25 @@ func (h *Handler) RequireAPICSRF(
 
 		next.ServeHTTP(writer, request)
 	})
+}
+
+func redirectToLogin(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	destination := "/login"
+
+	if request.URL.Path == "/oauth/authorize" {
+		returnTo := request.URL.RequestURI()
+
+		destination += "?return_to=" +
+			url.QueryEscape(returnTo)
+	}
+
+	http.Redirect(
+		writer,
+		request,
+		destination,
+		http.StatusSeeOther,
+	)
 }

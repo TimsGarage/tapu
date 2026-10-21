@@ -135,7 +135,7 @@ func TestSignIDToken(t *testing.T) {
 		t.Fatalf("unexpected nonce: %q", claims.Nonce)
 	}
 
-	if claims.PreferredUsername != "alice" {
+	if claims.PreferredUsername != "" {
 		t.Fatalf(
 			"unexpected preferred username: %q",
 			claims.PreferredUsername,

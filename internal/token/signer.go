@@ -3,6 +3,7 @@ package token
 import (
 	"crypto/ed25519"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -48,6 +49,11 @@ func (s *Signer) SignAccessToken(
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.accessTokenTTL)
 
+	username := ""
+	if scopeContains(input.Scope, "profile") {
+		username = input.Username
+	}
+
 	claims := AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuerURL,
@@ -60,7 +66,7 @@ func (s *Signer) SignAccessToken(
 		},
 		TokenType: TypeAccessToken,
 		ClientID:  input.ClientID,
-		Username:  input.Username,
+		Username:  username,
 		Scope:     input.Scope,
 	}
 
@@ -88,6 +94,11 @@ func (s *Signer) SignIDToken(
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.idTokenTTL)
 
+	preferredUsername := ""
+	if scopeContains(input.Scope, "profile") {
+		preferredUsername = input.Username
+	}
+
 	claims := IDTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuerURL,
@@ -99,7 +110,7 @@ func (s *Signer) SignIDToken(
 			ID:        uuid.NewString(),
 		},
 		Nonce:             input.Nonce,
-		PreferredUsername: input.Username,
+		PreferredUsername: preferredUsername,
 	}
 
 	token := jwt.NewWithClaims(
@@ -118,4 +129,14 @@ func (s *Signer) SignIDToken(
 	}
 
 	return signed, expiresAt, nil
+}
+
+func scopeContains(scope string, expected string) bool {
+	for _, value := range strings.Fields(scope) {
+		if value == expected {
+			return true
+		}
+	}
+
+	return false
 }

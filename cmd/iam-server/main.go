@@ -135,8 +135,15 @@ func run(logger *slog.Logger) error {
 		cfg.IDTokenTTL,
 	)
 
-	_ = oauthRepository
-	_ = tokenSigner
+	oauthHandler := oauth.NewHandler(
+		logger,
+		oauthRepository,
+		tokenSigner,
+		auditRepository,
+		publicKey,
+		cfg.IssuerURL,
+		cfg.AuthorizationCodeTTL,
+	)
 
 	publicOIDCHandler := oidc.NewPublicHandler(
 		cfg.IssuerURL,
@@ -169,6 +176,18 @@ func run(logger *slog.Logger) error {
 	router.Get("/", webHandler.Home)
 	router.Get("/login", webHandler.LoginPage)
 	router.Post("/login", webHandler.Login)
+
+	router.Post("/oauth/token", oauthHandler.Token)
+	router.Get("/oauth/userinfo", oauthHandler.UserInfo)
+	router.Post("/oauth/userinfo", oauthHandler.UserInfo)
+
+	router.Group(func(authorization chi.Router) {
+		authorization.Use(webHandler.RequireAuthentication)
+		authorization.Get(
+			"/oauth/authorize",
+			oauthHandler.Authorize,
+		)
+	})
 
 	router.Group(func(protected chi.Router) {
 		protected.Use(webHandler.RequireAuthentication)

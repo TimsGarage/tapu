@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ type Handler struct {
 type loginPageData struct {
 	CSRFToken string
 	Error     string
+	ReturnTo  string
 }
 
 type accountPageData struct {
@@ -85,12 +87,25 @@ func (h *Handler) Home(
 		http.StatusSeeOther,
 	)
 }
-
 func (h *Handler) LoginPage(
 	writer http.ResponseWriter,
 	request *http.Request,
 ) {
+	returnTo := validLoginReturnTo(
+		request.URL.Query().Get("return_to"),
+	)
+
 	if h.hasAuthenticatedSession(request) {
+		if returnTo != "" {
+			http.Redirect(
+				writer,
+				request,
+				returnTo,
+				http.StatusSeeOther,
+			)
+			return
+		}
+
 		http.Redirect(
 			writer,
 			request,
@@ -110,6 +125,7 @@ func (h *Handler) LoginPage(
 
 	h.renderLogin(writer, request, loginPageData{
 		CSRFToken: csrfToken,
+		ReturnTo:  returnTo,
 	})
 }
 
@@ -131,6 +147,10 @@ func (h *Handler) Login(
 		)
 		return
 	}
+
+	returnTo := validLoginReturnTo(
+		request.PostFormValue("return_to"),
+	)
 
 	csrfToken := request.PostFormValue("csrf_token")
 	csrfCookie, err := request.Cookie(loginCSRFCookieName)
@@ -166,6 +186,7 @@ func (h *Handler) Login(
 		h.renderLogin(writer, request, loginPageData{
 			CSRFToken: csrfToken,
 			Error:     "Invalid username or password.",
+			ReturnTo:  returnTo,
 		})
 		return
 	}
@@ -188,6 +209,7 @@ func (h *Handler) Login(
 		h.renderLogin(writer, request, loginPageData{
 			CSRFToken: csrfToken,
 			Error:     "Invalid username or password.",
+			ReturnTo:  returnTo,
 		})
 		return
 	}
@@ -221,10 +243,15 @@ func (h *Handler) Login(
 
 	h.recordRequestAudit(request, event, nil)
 
+	destination := "/account"
+	if returnTo != "" {
+		destination = returnTo
+	}
+
 	http.Redirect(
 		writer,
 		request,
-		"/account",
+		destination,
 		http.StatusSeeOther,
 	)
 }
@@ -566,4 +593,24 @@ func requestSourceIP(request *http.Request) string {
 	}
 
 	return strings.TrimSpace(request.RemoteAddr)
+}
+
+func validLoginReturnTo(value string) string {
+	if value == "" || len(value) > 4096 {
+		return ""
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return ""
+	}
+
+	if parsed.IsAbs() ||
+		parsed.Host != "" ||
+		parsed.Path != "/oauth/authorize" ||
+		parsed.Fragment != "" {
+		return ""
+	}
+
+	return parsed.RequestURI()
 }

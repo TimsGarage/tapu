@@ -131,3 +131,43 @@ For production, it must use the externally visible HTTPS origin:
 The issuer value must remain stable. Applications validate it exactly.
 
 Phase 3A does not yet implement the authorization or token endpoints.
+
+## Authorization Code flow
+
+The IAM supports OpenID Connect Authorization Code with mandatory PKCE `S256`.
+
+Authorization endpoint:
+
+    GET /oauth/authorize
+
+Token endpoint:
+
+    POST /oauth/token
+
+UserInfo endpoint:
+
+    GET /oauth/userinfo
+
+Supported scopes:
+
+- `openid`
+- `profile`
+
+Required authorization parameters:
+
+- `response_type=code`
+- `client_id`
+- `redirect_uri`
+- `scope`
+- `audience`
+- `code_challenge`
+- `code_challenge_method=S256`
+
+Confidential clients authenticate at the token endpoint using HTTP Basic
+authentication.
+
+Public clients send their `client_id` in the token request and rely on PKCE.
+
+Authorization codes expire after one minute and can be used exactly once.
+Access and ID tokens expire after five minutes. Refresh tokens are not currently
+supported.
