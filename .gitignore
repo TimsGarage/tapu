@@ -1,0 +1,22 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+secrets/*
+!secrets/.gitkeep
+
+# Go
+bin/
+coverage.out
+*.test
+
+# Editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Frontend dependencies for later phases
+node_modules/
+dist/

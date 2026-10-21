@@ -1,0 +1,11 @@
+.git
+.github
+.env
+.env.*
+secrets
+bin
+coverage.out
+node_modules
+dist
+README.md
+docs
