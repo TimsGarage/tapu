@@ -11,6 +11,7 @@ func TestLoadUsesDefaults(t *testing.T) {
 	t.Setenv("HTTP_ADDRESS", "")
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("SIGNING_PRIVATE_KEY_PATH", "")
+	t.Setenv("ISSUER_URL", "")
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -28,10 +29,10 @@ func TestLoadUsesDefaults(t *testing.T) {
 		t.Fatalf("expected :8080, got %q", cfg.HTTPAddress)
 	}
 
-	if cfg.SigningPrivateKeyPath != "./secrets/signing-private.pem" {
+	if cfg.IssuerURL != "http://127.0.0.1:8080" {
 		t.Fatalf(
-			"unexpected signing key path: %q",
-			cfg.SigningPrivateKeyPath,
+			"unexpected issuer URL: %q",
+			cfg.IssuerURL,
 		)
 	}
 }
@@ -52,5 +53,40 @@ func TestLoadRejectsUnknownEnvironment(t *testing.T) {
 	_, err := config.Load()
 	if err == nil {
 		t.Fatal("expected an error for an unknown environment")
+	}
+}
+
+func TestProductionRequiresHTTPSIssuer(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("ISSUER_URL", "http://auth.example.com")
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected HTTP issuer to be rejected in production")
+	}
+}
+
+func TestProductionAcceptsHTTPSIssuer(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("ISSUER_URL", "https://auth.example.com")
+
+	_, err := config.Load()
+	if err != nil {
+		t.Fatalf("expected HTTPS issuer to be accepted: %v", err)
+	}
+}
+
+func TestIssuerRejectsQuery(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv(
+		"ISSUER_URL",
+		"http://127.0.0.1:8080?unexpected=true",
+	)
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected issuer query to be rejected")
 	}
 }

@@ -107,3 +107,27 @@ plain HTTP.
 
 Never expose the development configuration to the internet. Production must use
 `APP_ENV=production` behind HTTPS.
+
+## OpenID Connect issuer
+
+The IAM publishes OpenID Connect metadata at:
+
+    /.well-known/openid-configuration
+
+The signing public key is published at:
+
+    /.well-known/jwks.json
+
+The canonical issuer is configured through `ISSUER_URL`.
+
+For local development:
+
+    ISSUER_URL=http://127.0.0.1:8080
+
+For production, it must use the externally visible HTTPS origin:
+
+    ISSUER_URL=https://auth.example.com
+
+The issuer value must remain stable. Applications validate it exactly.
+
+Phase 3A does not yet implement the authorization or token endpoints.

@@ -30,6 +30,7 @@ services:
         entrypoint: []
         environment:
             APP_ENV: development
+            ISSUER_URL: "http://127.0.0.1:8080"
             DATABASE_URL: >-
                 postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
             SIGNING_PRIVATE_KEY_PATH: /run/secrets/signing_private_key
@@ -48,6 +49,7 @@ services:
         environment:
             APP_ENV: development
             HTTP_ADDRESS: ":8080"
+            ISSUER_URL: "http://127.0.0.1:8080"
             DATABASE_URL: >-
                 postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
             SIGNING_PRIVATE_KEY_PATH: /run/secrets/signing_private_key

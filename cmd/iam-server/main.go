@@ -20,9 +20,12 @@ import (
 	"github.com/timsgarage/tapu/internal/database"
 	"github.com/timsgarage/tapu/internal/health"
 	"github.com/timsgarage/tapu/internal/identity"
+	"github.com/timsgarage/tapu/internal/oauth"
+	"github.com/timsgarage/tapu/internal/oidc"
 	"github.com/timsgarage/tapu/internal/ratelimit"
 	"github.com/timsgarage/tapu/internal/session"
 	"github.com/timsgarage/tapu/internal/signing"
+	"github.com/timsgarage/tapu/internal/token"
 	"github.com/timsgarage/tapu/internal/web"
 )
 
@@ -55,10 +58,12 @@ func run(logger *slog.Logger) error {
 		return errors.New("derive Ed25519 public key")
 	}
 
+	signingKeyID := signing.KeyID(publicKey)
+
 	logger.Info(
 		"signing key loaded",
 		"key_id",
-		signing.KeyID(publicKey),
+		signingKeyID,
 	)
 
 	startupCtx, startupCancel := context.WithTimeout(
@@ -120,6 +125,27 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
+	oauthRepository := oauth.NewRepository(db.GORM)
+
+	tokenSigner := token.NewSigner(
+		cfg.IssuerURL,
+		signingKeyID,
+		privateKey,
+		cfg.AccessTokenTTL,
+		cfg.IDTokenTTL,
+	)
+
+	_ = oauthRepository
+	_ = tokenSigner
+
+	publicOIDCHandler := oidc.NewPublicHandler(
+		cfg.IssuerURL,
+		token.NewJSONWebKeySet(
+			signingKeyID,
+			publicKey,
+		),
+	)
+
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -129,6 +155,16 @@ func run(logger *slog.Logger) error {
 
 	router.Get("/health/live", healthHandler.Live)
 	router.Get("/health/ready", healthHandler.Ready)
+
+	router.Get(
+		"/.well-known/openid-configuration",
+		publicOIDCHandler.Discovery,
+	)
+
+	router.Get(
+		"/.well-known/jwks.json",
+		publicOIDCHandler.JWKS,
+	)
 
 	router.Get("/", webHandler.Home)
 	router.Get("/login", webHandler.LoginPage)
