@@ -21,6 +21,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /out/iam-migrate \
     ./cmd/iam-migrate
 
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o /out/iamctl \
+    ./cmd/iamctl
+
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates \
@@ -29,6 +35,7 @@ RUN apk add --no-cache ca-certificates \
 
 COPY --from=build /out/iam-server /app/iam-server
 COPY --from=build /out/iam-migrate /app/iam-migrate
+COPY --from=build /out/iamctl /app/iamctl
 
 USER iam:iam
 

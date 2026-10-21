@@ -22,6 +22,7 @@ build:
 	go build -o bin/iam-server ./cmd/iam-server
 	go build -o bin/iam-migrate ./cmd/iam-migrate
 	go build -o bin/iam-keygen ./cmd/iam-keygen
+	go build -o bin/iamctl ./cmd/iamctl
 
 .PHONY: keygen
 keygen:
@@ -42,6 +43,15 @@ compose-logs:
 .PHONY: compose-ps
 compose-ps:
 	docker compose --env-file .env -f $(COMPOSE_FILE) ps
+
+.PHONY: admin-create
+admin-create:
+	@read -p "Administrator username: " username; \
+	docker compose --env-file .env -f $(COMPOSE_FILE) run \
+		--rm \
+		--entrypoint /app/iamctl \
+		iam \
+		admin create --username "$$username"
 
 .PHONY: clean-data
 clean-data:

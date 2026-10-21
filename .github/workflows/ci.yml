@@ -46,6 +46,7 @@ jobs:
                   go build ./cmd/iam-server
                   go build ./cmd/iam-migrate
                   go build ./cmd/iam-keygen
+                  go build ./cmd/iamctl
 
             - name: Install govulncheck
               run: go install golang.org/x/vuln/cmd/govulncheck@latest

@@ -13,10 +13,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/timsgarage/tapu/internal/audit"
 	"github.com/timsgarage/tapu/internal/config"
 	"github.com/timsgarage/tapu/internal/database"
 	"github.com/timsgarage/tapu/internal/health"
+	"github.com/timsgarage/tapu/internal/identity"
+	"github.com/timsgarage/tapu/internal/ratelimit"
+	"github.com/timsgarage/tapu/internal/session"
 	"github.com/timsgarage/tapu/internal/signing"
+	"github.com/timsgarage/tapu/internal/web"
 )
 
 func main() {
@@ -36,7 +41,9 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	privateKey, err := signing.LoadPrivateKey(cfg.SigningPrivateKeyPath)
+	privateKey, err := signing.LoadPrivateKey(
+		cfg.SigningPrivateKeyPath,
+	)
 	if err != nil {
 		return err
 	}
@@ -46,12 +53,10 @@ func run(logger *slog.Logger) error {
 		return errors.New("derive Ed25519 public key")
 	}
 
-	keyID := signing.KeyID(publicKey)
-
 	logger.Info(
 		"signing key loaded",
 		"key_id",
-		keyID,
+		signing.KeyID(publicKey),
 	)
 
 	startupCtx, startupCancel := context.WithTimeout(
@@ -66,17 +71,59 @@ func run(logger *slog.Logger) error {
 	}
 	defer db.Close()
 
+	passwords := identity.NewPasswordHasher()
+	users := identity.NewRepository(db.GORM)
+
+	authenticator, err := identity.NewAuthenticator(
+		users,
+		passwords,
+	)
+	if err != nil {
+		return err
+	}
+
+	sessionManager := session.NewManager(
+		db.GORM,
+		cfg.SessionIdleTTL,
+		cfg.SessionAbsoluteTTL,
+	)
+
+	auditRepository := audit.NewRepository(db.GORM)
+	loginLimiter := ratelimit.New(5, 5*time.Minute)
+
+	webHandler, err := web.NewHandler(
+		logger,
+		authenticator,
+		sessionManager,
+		auditRepository,
+		loginLimiter,
+		cfg.SecureCookies,
+	)
+	if err != nil {
+		return err
+	}
+
 	healthHandler := health.NewHandler(db.SQL)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.CleanPath)
 	router.Use(middleware.StripSlashes)
+	router.Use(web.SecurityHeaders)
 
 	router.Get("/health/live", healthHandler.Live)
 	router.Get("/health/ready", healthHandler.Ready)
+
+	router.Get("/", webHandler.Home)
+	router.Get("/login", webHandler.LoginPage)
+	router.Post("/login", webHandler.Login)
+
+	router.Group(func(protected chi.Router) {
+		protected.Use(webHandler.RequireAuthentication)
+		protected.Get("/account", webHandler.Account)
+		protected.Post("/logout", webHandler.Logout)
+	})
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress,
@@ -97,6 +144,8 @@ func run(logger *slog.Logger) error {
 			cfg.HTTPAddress,
 			"environment",
 			cfg.Environment,
+			"secure_cookies",
+			cfg.SecureCookies,
 		)
 
 		serverErrors <- server.ListenAndServe()
@@ -117,6 +166,7 @@ func run(logger *slog.Logger) error {
 			"signal",
 			receivedSignal.String(),
 		)
+
 	case serverErr := <-serverErrors:
 		if !errors.Is(serverErr, http.ErrServerClosed) {
 			return serverErr

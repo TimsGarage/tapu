@@ -1,0 +1,44 @@
+{{define "account"}}
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>IAM account</title>
+		<style>
+			:root {
+				color-scheme: light dark;
+				font-family: system-ui, sans-serif;
+			}
+
+			body {
+				margin: 2rem auto;
+				max-width: 48rem;
+				padding: 0 1rem;
+			}
+
+			button {
+				cursor: pointer;
+				font: inherit;
+				padding: 0.75rem 1rem;
+			}
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>Signed in</h1>
+
+			<p>You are signed in as <strong>{{.Username}}</strong>.</p>
+
+			{{if .IsAdmin}}
+			<p>Your account is an IAM administrator.</p>
+			{{end}}
+
+			<form method="post" action="/logout">
+				<input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
+				<button type="submit">Sign out</button>
+			</form>
+		</main>
+	</body>
+</html>
+{{end}}

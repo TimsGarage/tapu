@@ -77,3 +77,33 @@ Never commit:
 - Signing keys
 - Future client secrets
 - Future session or refresh tokens
+
+## Phase 1
+
+Phase 1 adds:
+
+- Administrator-created users
+- Argon2id password hashing
+- Database-backed sessions
+- Hosted login
+- Hosted account page
+- Logout
+- CSRF protection
+- Login rate limiting
+- Audit events
+
+### Create an administrator
+
+Start the stack and run:
+
+    make admin-create
+
+Then open:
+
+    http://127.0.0.1:8080/login
+
+The local Compose configuration uses `APP_ENV=development` so cookies work over
+plain HTTP.
+
+Never expose the development configuration to the internet. Production must use
+`APP_ENV=production` behind HTTPS.
