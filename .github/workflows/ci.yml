@@ -41,6 +41,21 @@ jobs:
             - name: Run tests
               run: go test -race -cover ./...
 
+            - name: Set up Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+                  cache-dependency-path: web/admin/package-lock.json
+
+            - name: Install admin UI dependencies
+              working-directory: web/admin
+              run: npm ci
+
+            - name: Build admin UI
+              working-directory: web/admin
+              run: npm run build
+
             - name: Build commands
               run: |
                   go build ./cmd/iam-server

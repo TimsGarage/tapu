@@ -32,6 +32,10 @@
 
 			{{if .IsAdmin}}
 			<p>Your account is an IAM administrator.</p>
+			{{end}} {{if .IsAdmin}}
+			<p>
+				<a href="/admin">Open IAM administration</a>
+			</p>
 			{{end}}
 
 			<form method="post" action="/logout">

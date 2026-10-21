@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/timsgarage/tapu/internal/admin"
+	"github.com/timsgarage/tapu/internal/adminui"
 	"github.com/timsgarage/tapu/internal/audit"
 	"github.com/timsgarage/tapu/internal/config"
 	"github.com/timsgarage/tapu/internal/database"
@@ -105,6 +107,19 @@ func run(logger *slog.Logger) error {
 
 	healthHandler := health.NewHandler(db.SQL)
 
+	adminHandler := admin.NewHandler(
+		logger,
+		db.GORM,
+		passwords,
+		sessionManager,
+		auditRepository,
+	)
+
+	adminUIHandler, err := adminui.NewHandler()
+	if err != nil {
+		return err
+	}
+
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
@@ -123,6 +138,61 @@ func run(logger *slog.Logger) error {
 		protected.Use(webHandler.RequireAuthentication)
 		protected.Get("/account", webHandler.Account)
 		protected.Post("/logout", webHandler.Logout)
+	})
+
+	router.Route("/api/admin", func(adminAPI chi.Router) {
+		adminAPI.Use(webHandler.RequireAuthentication)
+		adminAPI.Use(webHandler.RequireAdmin)
+		adminAPI.Use(webHandler.RequireAPICSRF)
+
+		adminAPI.Get("/session", adminHandler.CurrentSession)
+
+		adminAPI.Get("/users", adminHandler.ListUsers)
+		adminAPI.Post("/users", adminHandler.CreateUser)
+		adminAPI.Patch("/users/{userID}", adminHandler.UpdateUser)
+		adminAPI.Post(
+			"/users/{userID}/password",
+			adminHandler.ResetPassword,
+		)
+
+		adminAPI.Get(
+			"/users/{userID}/services",
+			adminHandler.ListUserServices,
+		)
+		adminAPI.Put(
+			"/users/{userID}/services/{serviceID}",
+			adminHandler.GrantUserService,
+		)
+		adminAPI.Delete(
+			"/users/{userID}/services/{serviceID}",
+			adminHandler.RevokeUserService,
+		)
+
+		adminAPI.Get("/services", adminHandler.ListServices)
+		adminAPI.Post("/services", adminHandler.CreateService)
+		adminAPI.Patch(
+			"/services/{serviceID}",
+			adminHandler.UpdateService,
+		)
+
+		adminAPI.Get("/clients", adminHandler.ListClients)
+		adminAPI.Post("/clients", adminHandler.CreateClient)
+		adminAPI.Patch(
+			"/clients/{clientID}",
+			adminHandler.UpdateClient,
+		)
+		adminAPI.Post(
+			"/clients/{clientID}/rotate-secret",
+			adminHandler.RotateClientSecret,
+		)
+	})
+
+	router.Group(func(adminUI chi.Router) {
+		adminUI.Use(webHandler.RequireAuthentication)
+		adminUI.Use(webHandler.RequireAdmin)
+
+		adminUI.Handle("/admin", adminUIHandler)
+		adminUI.Handle("/admin/*", adminUIHandler)
 	})
 
 	server := &http.Server{

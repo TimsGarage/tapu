@@ -20,3 +20,7 @@ coverage.out
 # Frontend dependencies for later phases
 node_modules/
 dist/
+
+web/admin/node_modules/
+internal/adminui/dist/*
+!internal/adminui/dist/placeholder.txt

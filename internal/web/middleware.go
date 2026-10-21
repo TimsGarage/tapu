@@ -15,7 +15,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 	) {
 		writer.Header().Set(
 			"Content-Security-Policy",
-			"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+			"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
 		)
 		writer.Header().Set("Referrer-Policy", "no-referrer")
 		writer.Header().Set("X-Content-Type-Options", "nosniff")
@@ -86,5 +86,68 @@ func (h *Handler) RequireAuthentication(
 		)
 
 		next.ServeHTTP(writer, request.WithContext(ctx))
+	})
+}
+
+func (h *Handler) RequireAdmin(
+	next http.Handler,
+) http.Handler {
+	return http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		user, ok := session.UserFromContext(request.Context())
+		if !ok || !user.IsAdmin {
+			http.Error(
+				writer,
+				"Forbidden",
+				http.StatusForbidden,
+			)
+			return
+		}
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func (h *Handler) RequireAPICSRF(
+	next http.Handler,
+) http.Handler {
+	return http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		request *http.Request,
+	) {
+		if request.Method == http.MethodGet ||
+			request.Method == http.MethodHead ||
+			request.Method == http.MethodOptions {
+			next.ServeHTTP(writer, request)
+			return
+		}
+
+		found, ok := session.FromContext(request.Context())
+		if !ok {
+			http.Error(
+				writer,
+				"Unauthorized",
+				http.StatusUnauthorized,
+			)
+			return
+		}
+
+		cookie, err := request.Cookie(h.csrfCookieName)
+		submitted := request.Header.Get("X-CSRF-Token")
+
+		if err != nil ||
+			!constantTimeTokenEqual(submitted, cookie.Value) ||
+			!h.sessions.ValidateCSRF(found, submitted) {
+			http.Error(
+				writer,
+				"Invalid CSRF token",
+				http.StatusForbidden,
+			)
+			return
+		}
+
+		next.ServeHTTP(writer, request)
 	})
 }
