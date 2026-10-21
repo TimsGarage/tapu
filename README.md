@@ -171,3 +171,29 @@ Public clients send their `client_id` in the token request and rely on PKCE.
 Authorization codes expire after one minute and can be used exactly once.
 Access and ID tokens expire after five minutes. Refresh tokens are not currently
 supported.
+
+## Go backend integration
+
+The reusable Go SDK is available at:
+
+    sdk/go/authsdk
+
+It provides:
+
+- Authorization Code with PKCE
+- State and nonce validation
+- ID- and access-token validation
+- Opaque application-local sessions
+- Login, callback, current-user, and logout handlers
+- Authentication middleware
+- Request-context identity and access-token helpers
+
+A minimal integration is available at:
+
+    examples/go-svelte
+
+The browser receives only an opaque application session cookie. OAuth tokens
+remain in the Go backend.
+
+The current SDK session store is in memory. Application sessions expire no later
+than the five-minute IAM access token.

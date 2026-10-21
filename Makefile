@@ -23,6 +23,7 @@ build: web-build
 	go build -o bin/iam-migrate ./cmd/iam-migrate
 	go build -o bin/iam-keygen ./cmd/iam-keygen
 	go build -o bin/iamctl ./cmd/iamctl
+	go build -o bin/example-server ./examples/go-svelte/cmd/server
 
 .PHONY: keygen
 keygen:
@@ -70,3 +71,11 @@ web-build:
 .PHONY: web-dev
 web-dev:
 	cd web/admin && npm run dev
+
+.PHONY: example-build
+example-build:
+	go build ./examples/go-svelte/cmd/server
+
+.PHONY: example-run
+example-run:
+	go run ./examples/go-svelte/cmd/server
