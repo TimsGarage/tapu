@@ -79,3 +79,48 @@ example-build:
 .PHONY: example-run
 example-run:
 	go run ./examples/go-svelte/cmd/server
+
+E2E_COMPOSE_PROJECT := personal-iam-e2e
+E2E_COMPOSE_FILES := \
+	-f deploy/compose/compose.yml \
+	-f deploy/compose/compose.e2e.yml
+
+.PHONY: e2e-up
+e2e-up:
+	docker-compose \
+		-p $(E2E_COMPOSE_PROJECT) \
+		--env-file e2e/.env \
+		$(E2E_COMPOSE_FILES) \
+		up --build -d
+
+.PHONY: e2e-down
+e2e-down:
+	docker-compose \
+		-p $(E2E_COMPOSE_PROJECT) \
+		--env-file e2e/.env \
+		$(E2E_COMPOSE_FILES) \
+		down
+
+.PHONY: e2e-reset
+e2e-reset:
+	docker-compose \
+		-p $(E2E_COMPOSE_PROJECT) \
+		--env-file e2e/.env \
+		$(E2E_COMPOSE_FILES) \
+		down --volumes
+
+.PHONY: e2e-seed
+e2e-seed:
+	cd e2e && npm run seed
+
+.PHONY: e2e-test
+e2e-test:
+	cd e2e && npm test
+
+.PHONY: e2e-headed
+e2e-headed:
+	cd e2e && npm run test:headed
+
+.PHONY: e2e-report
+e2e-report:
+	cd e2e && npm run report

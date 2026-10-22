@@ -1,0 +1,5 @@
+{
+  "name": "personal-iam-e2e-receiver",
+  "private": true,
+  "type": "module"
+}

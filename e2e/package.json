@@ -1,0 +1,16 @@
+{
+	"name": "personal-iam-e2e",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "node --env-file=.env ./node_modules/@playwright/test/cli.js test",
+		"test:headed": "node --env-file=.env ./node_modules/@playwright/test/cli.js test --headed",
+		"test:debug": "node --env-file=.env ./node_modules/@playwright/test/cli.js test --debug",
+		"report": "playwright show-report",
+		"seed": "node --env-file=.env scripts/seed.mjs"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.55.0",
+		"pg": "^8.16.0"
+	}
+}

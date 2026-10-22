@@ -14,10 +14,11 @@ type Config struct {
 	ClientSecret string
 	PublicClient bool
 
-	RedirectURL string
-	Audience    string
-
+	RedirectURL   string
+	Audience      string
 	AfterLoginURL string
+
+	AllowedOrigins []string
 
 	SessionCookieName     string
 	TransactionCookieName string
@@ -38,6 +39,13 @@ func (c *Config) applyDefaults() {
 	c.ClientID = strings.TrimSpace(c.ClientID)
 	c.RedirectURL = strings.TrimSpace(c.RedirectURL)
 	c.Audience = strings.TrimSpace(c.Audience)
+
+	for index, origin := range c.AllowedOrigins {
+		c.AllowedOrigins[index] = strings.TrimSuffix(
+			strings.TrimSpace(origin),
+			"/",
+		)
+	}
 
 	if c.AfterLoginURL == "" {
 		c.AfterLoginURL = "/"
@@ -111,13 +119,14 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("Audience is required"))
 	}
 
-	if !validLocalPath(c.AfterLoginURL) {
-		errs = append(
-			errs,
-			errors.New(
-				"AfterLoginURL must be a local absolute path",
-			),
-		)
+	if err := validateAfterLoginURL(c.AfterLoginURL); err != nil {
+		errs = append(errs, err)
+	}
+
+	for _, origin := range c.AllowedOrigins {
+		if err := validateOrigin(origin); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	if c.SessionCookieName == c.TransactionCookieName {
@@ -191,4 +200,57 @@ func validLocalPath(value string) bool {
 		!parsed.IsAbs() &&
 		parsed.Host == "" &&
 		parsed.Fragment == ""
+}
+
+func validateAfterLoginURL(value string) error {
+	if validLocalPath(value) {
+		return nil
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil ||
+		!parsed.IsAbs() ||
+		parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New(
+			"AfterLoginURL must be a local absolute path or an absolute HTTP or HTTPS URL",
+		)
+	}
+
+	if parsed.User != nil || parsed.Fragment != "" {
+		return errors.New(
+			"AfterLoginURL must not contain user information or a fragment",
+		)
+	}
+
+	return nil
+}
+
+func validateOrigin(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil ||
+		!parsed.IsAbs() ||
+		parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New(
+			"AllowedOrigins entries must be absolute HTTP or HTTPS origins",
+		)
+	}
+
+	if parsed.User != nil ||
+		parsed.Path != "" ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" {
+		return errors.New(
+			"AllowedOrigins entries must contain only a scheme and host",
+		)
+	}
+
+	if strings.Contains(parsed.Host, "*") {
+		return errors.New(
+			"AllowedOrigins entries must not contain wildcards",
+		)
+	}
+
+	return nil
 }

@@ -1,5 +1,13 @@
 import { writable } from "svelte/store";
 
+const configuredAPIOrigin = import.meta.env.VITE_API_ORIGIN || "";
+
+const apiOrigin = configuredAPIOrigin.replace(/\/$/, "");
+
+function apiURL(path) {
+	return `${apiOrigin}${path}`;
+}
+
 export const auth = writable({
 	loading: true,
 	authenticated: false,
@@ -8,8 +16,8 @@ export const auth = writable({
 });
 
 export async function loadAuthentication() {
-	const response = await fetch("/api/auth/me", {
-		credentials: "same-origin",
+	const response = await fetch(apiURL("/api/auth/me"), {
+		credentials: "include",
 		headers: {
 			Accept: "application/json",
 		},
@@ -41,13 +49,13 @@ export async function loadAuthentication() {
 }
 
 export function login() {
-	window.location.assign("/auth/login");
+	window.location.assign(apiURL("/auth/login"));
 }
 
 export async function logout(csrfToken) {
-	const response = await fetch("/api/auth/logout", {
+	const response = await fetch(apiURL("/api/auth/logout"), {
 		method: "POST",
-		credentials: "same-origin",
+		credentials: "include",
 		headers: {
 			"X-CSRF-Token": csrfToken,
 		},

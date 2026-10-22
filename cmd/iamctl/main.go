@@ -29,11 +29,44 @@ func main() {
 }
 
 func run(logger *slog.Logger, arguments []string) error {
+	if len(arguments) >= 1 &&
+		arguments[0] == "password-hash" {
+		flags := flag.NewFlagSet(
+			"password-hash",
+			flag.ContinueOnError,
+		)
+
+		passwordStdin := flags.Bool(
+			"password-stdin",
+			false,
+			"read the password from standard input",
+		)
+
+		if err := flags.Parse(arguments[1:]); err != nil {
+			return err
+		}
+
+		password, err := readPassword(*passwordStdin)
+		if err != nil {
+			return err
+		}
+
+		hasher := identity.NewPasswordHasher()
+
+		hash, err := hasher.Hash(password)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(hash)
+		return nil
+	}
+
 	if len(arguments) < 2 ||
 		arguments[0] != "admin" ||
 		arguments[1] != "create" {
 		return errors.New(
-			"usage: iamctl admin create --username <username>",
+			"usage: iamctl admin create --username <username> | iamctl password-hash",
 		)
 	}
 
@@ -181,4 +214,21 @@ func readPassword(fromStdin bool) (string, error) {
 	}
 
 	return string(first), nil
+}
+
+func printPasswordHash() error {
+	password, err := readPassword(false)
+	if err != nil {
+		return err
+	}
+
+	hasher := identity.NewPasswordHasher()
+
+	hash, err := hasher.Hash(password)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(hash)
+	return nil
 }

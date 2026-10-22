@@ -23,6 +23,11 @@ func main() {
 		15*time.Second,
 	)
 
+	frontendURL := getEnv(
+		"APP_FRONTEND_URL",
+		"http://127.0.0.1:5173",
+	)
+
 	authClient, err := authsdk.New(
 		ctx,
 		authsdk.Config{
@@ -44,8 +49,14 @@ func main() {
 				"IAM_AUDIENCE",
 				"project-a-api",
 			),
-			AfterLoginURL: "/",
-			SecureCookies: false,
+			AfterLoginURL: frontendURL,
+			AllowedOrigins: []string{
+				frontendURL,
+			},
+			SecureCookies: getEnv(
+				"APP_SECURE_COOKIES",
+				"false",
+			) == "true",
 		},
 	)
 	cancel()
@@ -57,6 +68,7 @@ func main() {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Recoverer)
+	router.Use(authClient.CORS)
 
 	router.Get("/auth/login", authClient.LoginHandler)
 	router.Get(
