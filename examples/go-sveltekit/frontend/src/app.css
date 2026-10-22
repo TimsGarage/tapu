@@ -1,0 +1,126 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+}
+
+button,
+input,
+a {
+  font: inherit;
+}
+
+button,
+input {
+  padding: 0.6rem 0.8rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+header {
+  align-items: center;
+  border-bottom: 1px solid #8885;
+  display: flex;
+  gap: 1.5rem;
+  justify-content: space-between;
+  padding: 1rem max(1rem, calc((100% - 70rem) / 2));
+}
+
+.brand {
+  font-weight: 700;
+}
+
+nav,
+.session,
+.todo-form {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+}
+
+main {
+  margin: 0 auto;
+  max-width: 70rem;
+  padding: 2rem 1rem;
+}
+
+section {
+  max-width: 50rem;
+}
+
+dl {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: max-content 1fr;
+}
+
+dt {
+  font-weight: 700;
+}
+
+dd {
+  overflow-wrap: anywhere;
+}
+
+form {
+  margin-bottom: 1.5rem;
+}
+
+form label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+
+.todo-form input {
+  flex: 1;
+}
+
+.todos {
+  list-style: none;
+  padding: 0;
+}
+
+.todos li {
+  align-items: center;
+  border-bottom: 1px solid #8885;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.8rem 0;
+}
+
+.completed {
+  opacity: 0.65;
+  text-decoration: line-through;
+}
+
+.error {
+  background: #8b1a1a;
+  border-radius: 0.4rem;
+  color: white;
+  padding: 0.75rem;
+}
+
+@media (max-width: 45rem) {
+  header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .todo-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -63,7 +63,7 @@ func (c *Client) CORS(
 		if request.Method == http.MethodOptions {
 			writer.Header().Set(
 				"Access-Control-Allow-Methods",
-				"GET, POST, OPTIONS",
+				"GET, POST, PUT, PATCH, DELETE, OPTIONS",
 			)
 			writer.Header().Set(
 				"Access-Control-Allow-Headers",

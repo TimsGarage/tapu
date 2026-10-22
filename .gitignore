@@ -34,3 +34,7 @@ examples/sveltekit-spa/.env
 examples/sveltekit-spa/node_modules/
 examples/sveltekit-spa/build/
 examples/sveltekit-spa/.svelte-kit/
+examples/go-sveltekit/frontend/.env
+examples/go-sveltekit/frontend/node_modules/
+examples/go-sveltekit/frontend/.svelte-kit/
+examples/go-sveltekit/frontend/build/
