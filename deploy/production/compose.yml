@@ -1,0 +1,116 @@
+name: tapu
+
+services:
+    postgres:
+        image: postgres:17-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB}
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+            interval: 5s
+            timeout: 3s
+            retries: 20
+            start_period: 10s
+        networks:
+            - iam-internal
+
+    keygen:
+        image: ${IAM_IMAGE}
+        user: "0:0"
+        restart: "no"
+        command:
+            - /bin/sh
+            - -ec
+            - |
+                if [ ! -f /keys/signing-private.pem ]; then
+                  /app/iam-keygen \
+                    -private /keys/signing-private.pem \
+                    -public /keys/signing-public.pem
+                fi
+
+                chown 10001:10001 \
+                  /keys/signing-private.pem \
+                  /keys/signing-public.pem
+
+                chmod 600 /keys/signing-private.pem
+                chmod 644 /keys/signing-public.pem
+        volumes:
+            - signing-keys:/keys
+        networks:
+            - iam-internal
+
+    migrate:
+        image: ${IAM_IMAGE}
+        restart: "no"
+        command:
+            - /app/iam-migrate
+        environment:
+            APP_ENV: production
+            DATABASE_URL: >-
+                postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+            SIGNING_PRIVATE_KEY_PATH: /keys/signing-private.pem
+            ISSUER_URL: ${IAM_PUBLIC_URL}
+        volumes:
+            - signing-keys:/keys:ro
+        depends_on:
+            postgres:
+                condition: service_healthy
+            keygen:
+                condition: service_completed_successfully
+        networks:
+            - iam-internal
+        security_opt:
+            - no-new-privileges:true
+
+    iam:
+        image: ${IAM_IMAGE}
+        restart: unless-stopped
+        environment:
+            APP_ENV: production
+            HTTP_ADDRESS: ":8080"
+            ISSUER_URL: ${IAM_PUBLIC_URL}
+            DATABASE_URL: >-
+                postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+            SIGNING_PRIVATE_KEY_PATH: /keys/signing-private.pem
+        volumes:
+            - signing-keys:/keys:ro
+        depends_on:
+            postgres:
+                condition: service_healthy
+            keygen:
+                condition: service_completed_successfully
+            migrate:
+                condition: service_completed_successfully
+        healthcheck:
+            test:
+                - CMD
+                - wget
+                - --quiet
+                - --spider
+                - http://127.0.0.1:8080/health/ready
+            interval: 10s
+            timeout: 3s
+            retries: 10
+            start_period: 15s
+        networks:
+            - iam-internal
+        read_only: true
+        tmpfs:
+            - /tmp
+        security_opt:
+            - no-new-privileges:true
+
+volumes:
+    postgres-data:
+    signing-keys:
+
+networks:
+    iam-internal:
+        driver: bridge

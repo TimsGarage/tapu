@@ -27,7 +27,6 @@ services:
             dockerfile: Dockerfile
         command:
             - /app/iam-migrate
-        entrypoint: []
         environment:
             APP_ENV: development
             ISSUER_URL: "http://127.0.0.1:8080"

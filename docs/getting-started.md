@@ -3,8 +3,7 @@
 This guide explains how to:
 
 1. Run and develop the IAM locally
-2. Deploy it on a server
-3. Integrate it into another Go and Svelte project
+2. Integrate it into another Go and Svelte project
 
 The IAM provides centralized login while each connected project keeps ownership of its own application data.
 
@@ -191,195 +190,7 @@ Do not add `--volumes` unless you intend to delete the local database.
 
 ---
 
-# 2. Production deployment
-
-The production setup requires:
-
-- A server with Docker and `docker-compose`
-- A domain such as `auth.example.com`
-- DNS pointing that domain to the server
-- HTTPS through a reverse proxy such as Caddy
-- Persistent storage and backups
-
-The IAM must not be exposed directly to the internet over plain HTTP.
-
-## Prepare the server
-
-Clone the repository:
-
-```bash
-git clone https://github.com/your-user/your-iam.git
-cd your-iam
-```
-
-Create the production environment:
-
-```bash
-cp .env.example .env
-```
-
-Set a unique PostgreSQL password:
-
-```dotenv
-POSTGRES_DB=iam
-POSTGRES_USER=iam
-POSTGRES_PASSWORD=replace-with-a-long-random-password
-```
-
-Protect the file:
-
-```bash
-chmod 600 .env
-```
-
-## Generate or restore the signing key
-
-For a new installation:
-
-```bash
-go run ./cmd/iam-keygen
-```
-
-For a restored installation, place the backed-up private key at:
-
-```text
-secrets/signing-private.pem
-```
-
-Protect it:
-
-```bash
-chmod 600 secrets/signing-private.pem
-```
-
-## Configure the production issuer
-
-The IAM container must use its public HTTPS address:
-
-```yaml
-environment:
-    APP_ENV: production
-    HTTP_ADDRESS: ":8080"
-    ISSUER_URL: "https://auth.example.com"
-```
-
-The issuer is part of every token and must exactly match the address used by applications. Do not change it casually after deployment.
-
-Production mode enables `Secure` cookies and requires an HTTPS issuer.
-
-## Configure the reverse proxy
-
-The IAM should remain bound to the server’s loopback interface:
-
-```yaml
-ports:
-    - "127.0.0.1:8080:8080"
-```
-
-A minimal Caddy configuration is:
-
-```caddyfile
-auth.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-Caddy obtains and renews TLS certificates automatically when:
-
-- DNS points to the server
-- Ports 80 and 443 are reachable
-- The domain is publicly valid
-
-Do not publish PostgreSQL to the host or internet.
-
-## Start the production stack
-
-```bash
-docker-compose \
-  --env-file .env \
-  -f deploy/compose/compose.yml \
-  up --build -d
-```
-
-Check the containers:
-
-```bash
-docker-compose \
-  --env-file .env \
-  -f deploy/compose/compose.yml \
-  ps
-```
-
-Verify the public endpoints:
-
-```bash
-curl --fail https://auth.example.com/health/ready
-curl --fail https://auth.example.com/.well-known/openid-configuration
-curl --fail https://auth.example.com/.well-known/jwks.json
-```
-
-## Create administrators
-
-```bash
-make admin-create
-```
-
-Create at least two administrators and use strong, unique passwords.
-
-## Back up persistent data
-
-Back up:
-
-- PostgreSQL
-- `secrets/signing-private.pem`
-- Reverse-proxy configuration
-- Any locally stored TLS or deployment files
-
-Example PostgreSQL backup:
-
-```bash
-docker-compose \
-  --env-file .env \
-  -f deploy/compose/compose.yml \
-  exec -T postgres \
-  pg_dump -U iam -d iam > iam-backup.sql
-```
-
-Protect backups because they contain user data and password hashes.
-
-Test restoration periodically. A backup that has never been restored is not a verified backup.
-
-## Update the deployment
-
-Before updating, create a backup. Then:
-
-```bash
-git pull
-```
-
-Rebuild and restart:
-
-```bash
-docker-compose \
-  --env-file .env \
-  -f deploy/compose/compose.yml \
-  up --build -d
-```
-
-The migration container applies new database migrations before the IAM starts.
-
-Check logs after every update:
-
-```bash
-docker-compose \
-  --env-file .env \
-  -f deploy/compose/compose.yml \
-  logs migrate iam
-```
-
----
-
-# 3. Integrating another project
+# 2. Integrating another project
 
 The recommended architecture is:
 
@@ -546,7 +357,7 @@ func privateHandler(
 
     // Use identity.Subject as the immutable IAM user ID.
     // Keep all project-specific data in this project's database.
-}
+
 ```
 
 Store `identity.Subject` as the IAM user reference. Do not use the username as a permanent database identifier because usernames may change.
