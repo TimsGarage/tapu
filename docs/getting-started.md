@@ -315,49 +315,129 @@ if err != nil {
 
 ## Register authentication routes
 
-Using Chi:
+Using gin needs a middleware adapter:
 
-```go
-router := chi.NewRouter()
+```golang
+package httpmiddleware
 
-router.Use(authClient.CORS)
+import (
+	"net/http"
 
-router.Get("/auth/login", authClient.LoginHandler)
-router.Get("/auth/callback", authClient.CallbackHandler)
-router.Get("/api/auth/me", authClient.CurrentUserHandler)
-router.Post("/api/auth/logout", authClient.LogoutHandler)
+	"github.com/gin-gonic/gin"
+)
+
+type StandardMiddleware func(http.Handler) http.Handler
+
+func FromStandard(
+	middleware StandardMiddleware,
+) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		reachedNextHandler := false
+
+		next := http.HandlerFunc(func(
+			_ http.ResponseWriter,
+			request *http.Request,
+		) {
+			reachedNextHandler = true
+			ctx.Request = request
+		})
+
+		middleware(next).ServeHTTP(
+			ctx.Writer,
+			ctx.Request,
+		)
+
+		if !reachedNextHandler {
+			ctx.Abort()
+			return
+		}
+
+		ctx.Next()
+	}
+}
 ```
 
-Protect an API route:
+The router would look like:
 
-```go
-router.With(
-    authClient.RequireAuthentication,
-).Get("/api/private", privateHandler)
-```
+```golang
+    router := gin.New()
+    router.Use(gin.Recovery())
 
-Read the authenticated identity:
-
-```go
-func privateHandler(
-    writer http.ResponseWriter,
-    request *http.Request,
-) {
-    identity, ok := authsdk.IdentityFromContext(
-        request.Context(),
+    router.Use(
+        httpmiddleware.FromStandard(
+            authClient.CORS,
+        ),
     )
-    if !ok {
-        http.Error(
-            writer,
-            "Unauthorized",
-            http.StatusUnauthorized,
-        )
-        return
-    }
 
-    // Use identity.Subject as the immutable IAM user ID.
-    // Keep all project-specific data in this project's database.
+    router.GET(
+        "/auth/login",
+        gin.WrapF(authClient.LoginHandler),
+    )
+    router.GET(
+        "/auth/callback",
+        gin.WrapF(authClient.CallbackHandler),
+    )
+    router.GET(
+        "/api/auth/me",
+        gin.WrapF(authClient.CurrentUserHandler),
+    )
+    router.POST(
+        "/api/auth/logout",
+        gin.WrapF(authClient.LogoutHandler),
+    )
 
+    authenticated := router.Group("/api")
+    authenticated.Use(
+        httpmiddleware.FromStandard(
+            authClient.RequireAuthentication,
+        ),
+    )
+
+    mutations := authenticated.Group("/todos")
+    mutations.Use(
+        httpmiddleware.FromStandard(
+            authClient.RequireCSRF,
+        ),
+    )
+
+    mutations.GET("", listTodos)
+    mutations.POST("", createTodo)
+    mutations.PUT("/:todoID", updateTodo)
+    mutations.DELETE("/:todoID", deleteTodo)
+```
+
+Retrieve the Identity:
+
+```golang
+func privateHandler(ctx *gin.Context) {
+	identity, ok := authsdk.IdentityFromContext(
+		ctx.Request.Context(),
+	)
+
+    // Similar for access token
+    // accessToken, ok := authsdk.AccessTokenFromContext(
+        // ctx.Request.Context(),
+    // )
+	if !ok {
+		ctx.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "unauthenticated",
+			},
+		)
+		return
+	}
+
+	ctx.JSON(
+		http.StatusOK,
+		gin.H{
+			"subject":  identity.Subject,
+			"username": identity.Username,
+			"audience": identity.Audience,
+			"scope":    identity.Scope,
+		},
+	)
+}
 ```
 
 Store `identity.Subject` as the IAM user reference. Do not use the username as a permanent database identifier because usernames may change.
