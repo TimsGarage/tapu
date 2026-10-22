@@ -91,6 +91,7 @@ func (h *PublicHandler) Discovery(
 	writer http.ResponseWriter,
 	_ *http.Request,
 ) {
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 	writePublicJSON(writer, h.discovery)
 }
 
@@ -98,6 +99,7 @@ func (h *PublicHandler) JWKS(
 	writer http.ResponseWriter,
 	_ *http.Request,
 ) {
+	writer.Header().Set("Access-Control-Allow-Origin", "*")
 	writer.Header().Set(
 		"Cache-Control",
 		"public, max-age=300",

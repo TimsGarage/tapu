@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -422,4 +424,89 @@ func (r *Repository) FindActiveUserByID(
 	}
 
 	return &user, nil
+}
+
+func (r *Repository) PublicClientOriginAllowed(
+	ctx context.Context,
+	origin string,
+) (bool, error) {
+	requestOrigin, err := parseOrigin(origin)
+	if err != nil {
+		return false, nil
+	}
+
+	var redirectURIs []string
+
+	err = r.database.WithContext(ctx).
+		Table("oauth_client_redirect_uris").
+		Select("oauth_client_redirect_uris.redirect_uri").
+		Joins(`
+			JOIN oauth_clients
+			  ON oauth_clients.id =
+			     oauth_client_redirect_uris.oauth_client_id
+		`).
+		Where(
+			"oauth_clients.client_type = ? AND oauth_clients.enabled = TRUE",
+			admin.ClientTypePublic,
+		).
+		Pluck(
+			"oauth_client_redirect_uris.redirect_uri",
+			&redirectURIs,
+		).
+		Error
+
+	if err != nil {
+		return false, fmt.Errorf(
+			"find public-client redirect URIs: %w",
+			err,
+		)
+	}
+
+	for _, redirectURI := range redirectURIs {
+		parsed, err := url.Parse(redirectURI)
+		if err != nil {
+			continue
+		}
+
+		registeredOrigin := strings.ToLower(
+			parsed.Scheme + "://" + parsed.Host,
+		)
+
+		if registeredOrigin == requestOrigin {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func parseOrigin(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return "", err
+	}
+
+	if !parsed.IsAbs() ||
+		parsed.Host == "" ||
+		parsed.User != nil ||
+		parsed.Path != "" ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" {
+		return "", errors.New("invalid origin")
+	}
+
+	if parsed.Scheme != "http" &&
+		parsed.Scheme != "https" {
+		return "", errors.New("unsupported origin scheme")
+	}
+
+	if strings.Contains(parsed.Host, "*") {
+		return "", errors.New(
+			"origin must not contain wildcards",
+		)
+	}
+
+	return strings.ToLower(
+		parsed.Scheme + "://" + parsed.Host,
+	), nil
 }

@@ -177,9 +177,26 @@ func run(logger *slog.Logger) error {
 	router.Get("/login", webHandler.LoginPage)
 	router.Post("/login", webHandler.Login)
 
-	router.Post("/oauth/token", oauthHandler.Token)
-	router.Get("/oauth/userinfo", oauthHandler.UserInfo)
-	router.Post("/oauth/userinfo", oauthHandler.UserInfo)
+	router.Route("/oauth", func(oauthRoutes chi.Router) {
+		oauthRoutes.Use(oauthHandler.PublicClientCORS)
+
+		oauthRoutes.Options("/token", func(
+			writer http.ResponseWriter,
+			_ *http.Request,
+		) {
+			writer.WriteHeader(http.StatusNoContent)
+		})
+		oauthRoutes.Post("/token", oauthHandler.Token)
+
+		oauthRoutes.Options("/userinfo", func(
+			writer http.ResponseWriter,
+			_ *http.Request,
+		) {
+			writer.WriteHeader(http.StatusNoContent)
+		})
+		oauthRoutes.Get("/userinfo", oauthHandler.UserInfo)
+		oauthRoutes.Post("/userinfo", oauthHandler.UserInfo)
+	})
 
 	router.Group(func(authorization chi.Router) {
 		authorization.Use(webHandler.RequireAuthentication)

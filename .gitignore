@@ -29,3 +29,8 @@ e2e/node_modules/
 e2e/.generated.json
 e2e/playwright-report/
 e2e/test-results/
+
+examples/sveltekit-spa/.env
+examples/sveltekit-spa/node_modules/
+examples/sveltekit-spa/build/
+examples/sveltekit-spa/.svelte-kit/
