@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net"
 	"net/http"
@@ -28,7 +28,6 @@ const (
 
 type Handler struct {
 	logger            *slog.Logger
-	templates         *template.Template
 	authenticator     *identity.Authenticator
 	sessions          *session.Manager
 	audit             *audit.Repository
@@ -36,18 +35,7 @@ type Handler struct {
 	sessionCookieName string
 	csrfCookieName    string
 	secureCookies     bool
-}
-
-type loginPageData struct {
-	CSRFToken string
-	Error     string
-	ReturnTo  string
-}
-
-type accountPageData struct {
-	Username  string
-	IsAdmin   bool
-	CSRFToken string
+	uiOrigin          string
 }
 
 func NewHandler(
@@ -57,15 +45,10 @@ func NewHandler(
 	auditRepository *audit.Repository,
 	loginLimiter *ratelimit.Limiter,
 	secureCookies bool,
+	uiOrigin string,
 ) (*Handler, error) {
-	templates, err := parseTemplates()
-	if err != nil {
-		return nil, fmt.Errorf("parse templates: %w", err)
-	}
-
 	return &Handler{
 		logger:            logger,
-		templates:         templates,
 		authenticator:     authenticator,
 		sessions:          sessions,
 		audit:             auditRepository,
@@ -73,60 +56,11 @@ func NewHandler(
 		sessionCookieName: "iam_session",
 		csrfCookieName:    "iam_csrf",
 		secureCookies:     secureCookies,
+		uiOrigin: strings.TrimRight(
+			uiOrigin,
+			"/",
+		),
 	}, nil
-}
-
-func (h *Handler) Home(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	http.Redirect(
-		writer,
-		request,
-		"/account",
-		http.StatusSeeOther,
-	)
-}
-func (h *Handler) LoginPage(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	returnTo := validLoginReturnTo(
-		request.URL.Query().Get("return_to"),
-	)
-
-	if h.hasAuthenticatedSession(request) {
-		if returnTo != "" {
-			http.Redirect(
-				writer,
-				request,
-				returnTo,
-				http.StatusSeeOther,
-			)
-			return
-		}
-
-		http.Redirect(
-			writer,
-			request,
-			"/account",
-			http.StatusSeeOther,
-		)
-		return
-	}
-
-	csrfToken, err := generateBrowserToken()
-	if err != nil {
-		h.internalServerError(writer, request, err)
-		return
-	}
-
-	h.setLoginCSRFCookie(writer, csrfToken)
-
-	h.renderLogin(writer, request, loginPageData{
-		CSRFToken: csrfToken,
-		ReturnTo:  returnTo,
-	})
 }
 
 func (h *Handler) Login(
@@ -183,11 +117,15 @@ func (h *Handler) Login(
 			},
 		)
 
-		h.renderLogin(writer, request, loginPageData{
-			CSRFToken: csrfToken,
-			Error:     "Invalid username or password.",
-			ReturnTo:  returnTo,
-		})
+		http.Redirect(
+			writer,
+			request,
+			loginFailureURL(
+				"invalid_credentials",
+				returnTo,
+			),
+			http.StatusSeeOther,
+		)
 		return
 	}
 
@@ -206,11 +144,15 @@ func (h *Handler) Login(
 			},
 		)
 
-		h.renderLogin(writer, request, loginPageData{
-			CSRFToken: csrfToken,
-			Error:     "Invalid username or password.",
-			ReturnTo:  returnTo,
-		})
+		http.Redirect(
+			writer,
+			request,
+			loginFailureURL(
+				"invalid_credentials",
+				returnTo,
+			),
+			http.StatusSeeOther,
+		)
 		return
 	}
 
@@ -254,69 +196,6 @@ func (h *Handler) Login(
 		destination,
 		http.StatusSeeOther,
 	)
-}
-
-func (h *Handler) Account(
-	writer http.ResponseWriter,
-	request *http.Request,
-) {
-	user, ok := session.UserFromContext(request.Context())
-	if !ok {
-		http.Error(
-			writer,
-			"Internal server error",
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	csrfCookie, err := request.Cookie(h.csrfCookieName)
-	if err != nil {
-		h.clearSessionCookies(writer)
-
-		http.Redirect(
-			writer,
-			request,
-			"/login",
-			http.StatusSeeOther,
-		)
-		return
-	}
-
-	found, ok := session.FromContext(request.Context())
-	if !ok || !h.sessions.ValidateCSRF(found, csrfCookie.Value) {
-		h.clearSessionCookies(writer)
-
-		http.Redirect(
-			writer,
-			request,
-			"/login",
-			http.StatusSeeOther,
-		)
-		return
-	}
-
-	writer.Header().Set(
-		"Cache-Control",
-		"no-store, max-age=0",
-	)
-
-	err = h.templates.ExecuteTemplate(
-		writer,
-		"account",
-		accountPageData{
-			Username:  user.Username,
-			IsAdmin:   user.IsAdmin,
-			CSRFToken: csrfCookie.Value,
-		},
-	)
-	if err != nil {
-		h.logger.Error(
-			"render account page",
-			"error",
-			err,
-		)
-	}
 }
 
 func (h *Handler) Logout(
@@ -387,35 +266,6 @@ func (h *Handler) Logout(
 	)
 }
 
-func (h *Handler) renderLogin(
-	writer http.ResponseWriter,
-	request *http.Request,
-	data loginPageData,
-) {
-	writer.Header().Set(
-		"Cache-Control",
-		"no-store, max-age=0",
-	)
-
-	if data.Error != "" {
-		writer.WriteHeader(http.StatusUnauthorized)
-	}
-
-	if err := h.templates.ExecuteTemplate(
-		writer,
-		"login",
-		data,
-	); err != nil {
-		h.logger.Error(
-			"render login page",
-			"error",
-			err,
-			"request_id",
-			middleware.GetReqID(request.Context()),
-		)
-	}
-}
-
 func (h *Handler) hasAuthenticatedSession(
 	request *http.Request,
 ) bool {
@@ -473,7 +323,7 @@ func (h *Handler) setLoginCSRFCookie(
 	http.SetCookie(writer, &http.Cookie{
 		Name:     loginCSRFCookieName,
 		Value:    token,
-		Path:     "/login",
+		Path:     "/api/web/login",
 		MaxAge:   600,
 		Secure:   h.secureCookies,
 		HttpOnly: true,
@@ -487,7 +337,7 @@ func (h *Handler) clearLoginCSRFCookie(
 	http.SetCookie(writer, &http.Cookie{
 		Name:     loginCSRFCookieName,
 		Value:    "",
-		Path:     "/login",
+		Path:     "/api/web/login",
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
 		Secure:   h.secureCookies,
@@ -613,4 +463,171 @@ func validLoginReturnTo(value string) string {
 	}
 
 	return parsed.RequestURI()
+}
+
+func (h *Handler) LoginBootstrap(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	returnTo := validLoginReturnTo(
+		request.URL.Query().Get("return_to"),
+	)
+
+	if h.hasAuthenticatedSession(request) {
+		destination := "/account"
+		if returnTo != "" {
+			destination = returnTo
+		}
+
+		writeJSON(
+			writer,
+			http.StatusOK,
+			map[string]any{
+				"authenticated": true,
+				"redirectTo":    destination,
+				"returnTo":      returnTo,
+			},
+		)
+		return
+	}
+
+	csrfToken, err := generateBrowserToken()
+	if err != nil {
+		h.internalServerError(
+			writer,
+			request,
+			err,
+		)
+		return
+	}
+
+	h.setLoginCSRFCookie(
+		writer,
+		csrfToken,
+	)
+
+	writeJSON(
+		writer,
+		http.StatusOK,
+		map[string]any{
+			"authenticated": false,
+			"csrfToken":     csrfToken,
+			"returnTo":      returnTo,
+		},
+	)
+}
+
+func writeJSON(
+	writer http.ResponseWriter,
+	status int,
+	value any,
+) {
+	writer.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+	writer.Header().Set(
+		"Cache-Control",
+		"no-store",
+	)
+	writer.WriteHeader(status)
+
+	_ = json.NewEncoder(writer).Encode(value)
+}
+
+func (h *Handler) AccountBootstrap(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	user, ok := session.UserFromContext(
+		request.Context(),
+	)
+	if !ok {
+		writeJSON(
+			writer,
+			http.StatusUnauthorized,
+			map[string]string{
+				"error": "unauthenticated",
+			},
+		)
+		return
+	}
+
+	csrfCookie, err := request.Cookie(h.csrfCookieName)
+	if err != nil {
+		h.clearSessionCookies(writer)
+
+		writeJSON(
+			writer,
+			http.StatusUnauthorized,
+			map[string]string{
+				"error": "unauthenticated",
+			},
+		)
+		return
+	}
+
+	found, ok := session.FromContext(request.Context())
+	if !ok || !h.sessions.ValidateCSRF(found, csrfCookie.Value) {
+		h.clearSessionCookies(writer)
+
+		h.internalServerError(
+			writer,
+			request,
+			fmt.Errorf(""),
+		)
+		return
+	}
+
+	writeJSON(
+		writer,
+		http.StatusOK,
+		map[string]any{
+			"user": map[string]any{
+				"id":       user.ID,
+				"username": user.Username,
+				"isAdmin":  user.IsAdmin,
+			},
+			"csrfToken": csrfCookie.Value,
+		},
+	)
+}
+
+func loginFailureURL(
+	errorCode string,
+	returnTo string,
+) string {
+	values := url.Values{}
+	values.Set("error", errorCode)
+
+	if returnTo != "" {
+		values.Set("return_to", returnTo)
+	}
+
+	return "/login?" + values.Encode()
+}
+
+func (h *Handler) redirectToLogin(
+	writer http.ResponseWriter,
+	request *http.Request,
+) {
+	destination := "/login"
+
+	if request.URL.Path == "/oauth/authorize" {
+		returnTo := request.URL.RequestURI()
+
+		destination += "?return_to=" +
+			url.QueryEscape(returnTo)
+	}
+
+	if h.uiOrigin != "" {
+		destination = h.uiOrigin + destination
+	}
+
+	http.Redirect(
+		writer,
+		request,
+		destination,
+		http.StatusSeeOther,
+	)
 }

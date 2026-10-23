@@ -105,6 +105,7 @@ func run(logger *slog.Logger) error {
 		auditRepository,
 		loginLimiter,
 		cfg.SecureCookies,
+		cfg.UIOrigin,
 	)
 	if err != nil {
 		return err
@@ -120,7 +121,7 @@ func run(logger *slog.Logger) error {
 		auditRepository,
 	)
 
-	adminUIHandler, err := adminui.NewHandler()
+	applicationUIHandler, err := adminui.NewHandler()
 	if err != nil {
 		return err
 	}
@@ -173,9 +174,11 @@ func run(logger *slog.Logger) error {
 		publicOIDCHandler.JWKS,
 	)
 
-	router.Get("/", webHandler.Home)
-	router.Get("/login", webHandler.LoginPage)
+	router.Handle("/ui/*", http.HandlerFunc(applicationUIHandler.Asset))
+	router.Get("/login", applicationUIHandler.Shell)
 	router.Post("/login", webHandler.Login)
+	router.Get("/api/web/login", webHandler.LoginBootstrap)
+	router.Post("/api/web/login", webHandler.Login)
 
 	router.Route("/oauth", func(oauthRoutes chi.Router) {
 		oauthRoutes.Use(oauthHandler.PublicClientCORS)
@@ -208,8 +211,9 @@ func run(logger *slog.Logger) error {
 
 	router.Group(func(protected chi.Router) {
 		protected.Use(webHandler.RequireAuthentication)
-		protected.Get("/account", webHandler.Account)
-		protected.Post("/logout", webHandler.Logout)
+		protected.Get("/account", applicationUIHandler.Shell)
+		protected.Get("/api/web/account", webHandler.AccountBootstrap)
+		protected.Post("/api/web/logout", webHandler.Logout)
 	})
 
 	router.Route("/api/admin", func(adminAPI chi.Router) {
@@ -263,8 +267,8 @@ func run(logger *slog.Logger) error {
 		adminUI.Use(webHandler.RequireAuthentication)
 		adminUI.Use(webHandler.RequireAdmin)
 
-		adminUI.Handle("/admin", adminUIHandler)
-		adminUI.Handle("/admin/*", adminUIHandler)
+		adminUI.Get("/admin", applicationUIHandler.Shell)
+		adminUI.Get("/admin/*", applicationUIHandler.Shell)
 	})
 
 	server := &http.Server{

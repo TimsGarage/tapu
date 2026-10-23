@@ -27,6 +27,7 @@ type Config struct {
 	AuthorizationCodeTTL  time.Duration
 	AccessTokenTTL        time.Duration
 	IDTokenTTL            time.Duration
+	UIOrigin              string
 }
 
 func Load() (Config, error) {
@@ -52,6 +53,10 @@ func Load() (Config, error) {
 		AuthorizationCodeTTL: time.Minute,
 		AccessTokenTTL:       5 * time.Minute,
 		IDTokenTTL:           5 * time.Minute,
+		UIOrigin: strings.TrimRight(
+			strings.TrimSpace(os.Getenv("UI_ORIGIN")),
+			"/",
+		),
 	}
 
 	cfg.IssuerURL = strings.TrimRight(cfg.IssuerURL, "/")
@@ -156,6 +161,13 @@ func (c Config) Validate() error {
 		)
 	}
 
+	if err := validateOptionalOrigin(
+		"UI_ORIGIN",
+		c.UIOrigin,
+	); err != nil {
+		errs = append(errs, err)
+	}
+
 	return errors.Join(errs...)
 }
 
@@ -207,4 +219,37 @@ func getEnv(name string, fallback string) string {
 	}
 
 	return value
+}
+
+func validateOptionalOrigin(
+	name string,
+	value string,
+) error {
+	if value == "" {
+		return nil
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil ||
+		!parsed.IsAbs() ||
+		parsed.Host == "" ||
+		(parsed.Scheme != "http" &&
+			parsed.Scheme != "https") {
+		return fmt.Errorf(
+			"%s must be an absolute HTTP or HTTPS origin",
+			name,
+		)
+	}
+
+	if parsed.User != nil ||
+		(parsed.Path != "" && parsed.Path != "/") ||
+		parsed.RawQuery != "" ||
+		parsed.Fragment != "" {
+		return fmt.Errorf(
+			"%s must contain only a scheme and host",
+			name,
+		)
+	}
+
+	return nil
 }
