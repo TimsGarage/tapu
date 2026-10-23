@@ -174,7 +174,7 @@ func run(logger *slog.Logger) error {
 		publicOIDCHandler.JWKS,
 	)
 
-	router.Handle("/ui/*", http.HandlerFunc(applicationUIHandler.Asset))
+	router.Handle("/_app/*", http.HandlerFunc(applicationUIHandler.Asset))
 	router.Get("/login", applicationUIHandler.Shell)
 	router.Post("/login", webHandler.Login)
 	router.Get("/api/web/login", webHandler.LoginBootstrap)

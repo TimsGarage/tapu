@@ -62,15 +62,15 @@ clean-data:
 
 .PHONY: web-install
 web-install:
-	cd web/admin && npm install
+	cd web/frontend && npm install
 
 .PHONY: web-build
 web-build:
-	cd web/admin && npm run build
+	cd web/frontend && npm run build
 
 .PHONY: web-dev
 web-dev:
-	cd web/admin && npm run dev
+	cd web/frontend && npm run dev
 
 .PHONY: example-build
 example-build:

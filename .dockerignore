@@ -9,5 +9,5 @@ node_modules
 dist
 README.md
 docs
-web/admin/node_modules
+web/frontend/node_modules
 internal/adminui/dist

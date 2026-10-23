@@ -11,19 +11,19 @@ import (
 var distribution embed.FS
 
 type Handler struct {
-	indexHTML []byte
-	assets    http.Handler
+	shell  []byte
+	assets http.Handler
 }
 
 func NewHandler() (*Handler, error) {
-	indexHTML, err := distribution.ReadFile(
+	shell, err := distribution.ReadFile(
 		"dist/index.html",
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	distributionFS, err := fs.Sub(
+	distFS, err := fs.Sub(
 		distribution,
 		"dist",
 	)
@@ -32,20 +32,54 @@ func NewHandler() (*Handler, error) {
 	}
 
 	return &Handler{
-		indexHTML: indexHTML,
+		shell: shell,
 		assets: http.StripPrefix(
-			"/ui/",
+			"/_app/",
 			http.FileServer(
-				http.FS(distributionFS),
+				http.FS(
+					mustSubFS(distFS, "_app"),
+				),
 			),
 		),
 	}, nil
+}
+
+func mustSubFS(
+	root fs.FS,
+	directory string,
+) fs.FS {
+	subdirectory, err := fs.Sub(
+		root,
+		directory,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	return subdirectory
 }
 
 func (h *Handler) Shell(
 	writer http.ResponseWriter,
 	_ *http.Request,
 ) {
+	// SvelteKit's static output contains its own hash-based CSP
+	// in a meta element. A generic script-src policy from the Go
+	// middleware would additionally block its bootstrap script.
+	writer.Header().Del(
+		"Content-Security-Policy",
+	)
+
+	// frame-ancestors is not reliably enforced from a CSP meta
+	// element, so retain it as an HTTP response header.
+	writer.Header().Set(
+		"Content-Security-Policy",
+		"frame-ancestors 'none'",
+	)
+	writer.Header().Set(
+		"X-Frame-Options",
+		"DENY",
+	)
 	writer.Header().Set(
 		"Content-Type",
 		"text/html; charset=utf-8",
@@ -59,7 +93,7 @@ func (h *Handler) Shell(
 		"nosniff",
 	)
 
-	_, _ = writer.Write(h.indexHTML)
+	_, _ = writer.Write(h.shell)
 }
 
 func (h *Handler) Asset(
@@ -68,7 +102,7 @@ func (h *Handler) Asset(
 ) {
 	if !strings.HasPrefix(
 		request.URL.Path,
-		"/ui/",
+		"/_app/",
 	) {
 		http.NotFound(writer, request)
 		return

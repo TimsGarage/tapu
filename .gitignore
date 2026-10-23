@@ -21,7 +21,7 @@ coverage.out
 node_modules/
 dist/
 
-web/admin/node_modules/
+web/frontend/node_modules/
 internal/adminui/dist/*
 !internal/adminui/dist/placeholder.txt
 

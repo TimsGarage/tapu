@@ -46,14 +46,14 @@ jobs:
               with:
                   node-version: 22
                   cache: npm
-                  cache-dependency-path: web/admin/package-lock.json
+                  cache-dependency-path: web/frontend/package-lock.json
 
             - name: Install admin UI dependencies
-              working-directory: web/admin
+              working-directory: web/frontend
               run: npm ci
 
             - name: Build admin UI
-              working-directory: web/admin
+              working-directory: web/frontend
               run: npm run build
 
             - name: Build commands

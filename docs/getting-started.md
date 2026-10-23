@@ -80,7 +80,7 @@ Never commit these files. Losing the private key invalidates existing tokens, so
 ## Install frontend dependencies
 
 ```bash
-cd web/admin
+cd web/frontend
 npm install
 cd ../..
 ```
@@ -97,7 +97,7 @@ go test -race ./...
 Build the admin UI:
 
 ```bash
-cd web/admin
+cd web/frontend
 npm run build
 cd ../..
 ```

@@ -1,11 +1,11 @@
 FROM node:22-alpine AS web-build
 
-WORKDIR /src/web/admin
+WORKDIR /src/web/frontend
 
-COPY web/admin/package.json web/admin/package-lock.json ./
+COPY web/frontend/package.json web/frontend/package-lock.json ./
 RUN npm ci
 
-COPY web/admin/ ./
+COPY web/frontend/ ./
 RUN npm run build
 
 FROM golang:1.27.2-alpine AS go-build

@@ -168,7 +168,7 @@ go test -race ./...
 Build the administration UI:
 
 ```bash
-cd web/admin
+cd web/frontend
 npm ci
 npm run build
 ```
